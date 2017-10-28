@@ -1,0 +1,3 @@
+supresion fichier driver/timer.c
+passe a 4 le nombre max de timer pour les stor
+gestion irq

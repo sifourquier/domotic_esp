@@ -1,0 +1,5 @@
+ 
+enable TLI4970_ENABLE
+
+system_update_cpu_freq(160);
+#define PRECISION_TIMER 21 //us a 17 on a des reset

@@ -1,0 +1,4 @@
+ installer serveur MQTT
+ //dans le fichier /etc/mosquitto/mosquitto.conf
+ //ajouter "message_size_limit 2048"
+ chargé la config dans le module
