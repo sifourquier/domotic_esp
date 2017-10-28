@@ -1,2 +1,0 @@
-system_update_cpu_freq(160); //ne semble pas changer la consomation
-//a verifier si modifi le CLK du SPI
