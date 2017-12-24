@@ -31,9 +31,13 @@
 	#include "driver/i2c_master.h"
 #endif 
 
-#define RECEIVEGPIO_STORE  1
-#define FUNC_GPIO_STORE  FUNC_GPIO1
-#define PERIPHS_IO_MUX_STORE PERIPHS_IO_MUX_U0TXD_U
+#define RECEIVEGPIO_STORE  12
+#define FUNC_GPIO_STORE  FUNC_GPIO12
+#define PERIPHS_IO_MUX_STORE PERIPHS_IO_MUX_MTDI_U
+
+#define RECEIVEGPIO_STORE2  13
+#define FUNC_GPIO_STORE2  FUNC_GPIO13
+#define PERIPHS_IO_MUX_STORE2 PERIPHS_IO_MUX_MTCK_U
 
 #define RECEIVEGPIO_ZERO_CROSS  4
 #define FUNC_GPIO_ZERO_CROSS  FUNC_GPIO4
@@ -90,7 +94,7 @@ volatile bool timer_triack_on=0;
 #endif
 
 #ifdef STORE
-volatile int niveau=0,consinge=0;
+volatile signed int niveau=0,consinge=0;
 #endif
 
 #ifdef DETECT_0V
@@ -181,7 +185,7 @@ void ICACHE_FLASH_ATTR print(char* string)
 //#ifndef STORE
 	uart0_sendStr(string);
 //#endif
-	mqtt_print(&mqttClient,string);
+	//mqtt_print(&mqttClient,string);
 }
 
 void print_debug(char* string)
@@ -745,23 +749,31 @@ void timerPwm2()
 
 void IRQ()
 {
-		uint32 gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+		//print_debug("i\n");
+	uint32 gpio_status;
+	do
+	{
+		gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status);//clear all irq
+
 #ifdef TRIACK
 		if(gpio_status & BIT(RECEIVEGPIO_ZERO_CROSS))
 		{
-			ETS_GPIO_INTR_DISABLE();	
+			gpio_pin_intr_state_set(GPIO_ID_PIN(RECEIVEGPIO_ZERO_CROSS), GPIO_PIN_INTR_DISABLE); // Interr	
 			ZeroCrossIRQ();
 		}
 #endif
+
 #ifdef STORE
 		if(gpio_status & BIT(RECEIVEGPIO_STORE))
 			storeIRQ();
 #endif
+		
 #ifdef PCF8885
 		if(gpio_status & BIT(RECEIVEGPIO_IRQ_PCF8885))
 			pcf8885func();
 #endif
-		GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status);//clear all irq
+	}while(gpio_status);
 }
 
 #ifdef TRIACK
@@ -771,10 +783,10 @@ void timerEnableTriack()
 }
 
 #ifdef DETECT_0V
-void no_zero_cross()
+void no_zero_cross() //detect if no zero crossing occure (230v stoped)
 {
 	send_paquet_sensor(ID("/sensors/switch/"),SWITCH,100,0,"_1");
-	send_paquet_sensor(ID("/sensors/switch/"),SWITCH,0,0,"_1");
+	send_paquet_sensor(ID("/sensors/switch/"),SWITCH,0,0,"_sensor");
 	os_timer_disarm(&timer_0V); // dis_arm the timer
 }
 #endif
@@ -789,7 +801,9 @@ void timerDisableTriack()
 void ZeroCross()//après iRQ + après 10ms
 {
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, BIT(RECEIVEGPIO_ZERO_CROSS));//ici clear uniquement bon gpio
-	ETS_GPIO_INTR_ENABLE();
+	//gpio_pin_intr_state_set(GPIO_ID_PIN(RECEIVEGPIO_ZERO_CROSS), GPIO_PIN_INTR_NEGEDGE); // Interr	
+
+
 	if(puissance_triac>0)
 	{
 		GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1<<BIT_TRIAC);//enable triac
@@ -827,13 +841,16 @@ void ZeroCross()//après iRQ + après 10ms
 			timer_triack_on=0;
 		}
 		//GPIO_OUTPUT_SET(BIT_TRIAC,1); //toujour a 1
-		GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1<<BIT_TRIAC);
+ 		GPIO_REG_WRITE(GPIO_OUT_W1TS_ADDRESS, 1<<BIT_TRIAC);
+				//print_debug("0");
+
 
 	}
 	else if(puissance_triac>0)
 	{
 		//GPIO_OUTPUT_SET(BIT_TRIAC,0);
 		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, 1<<BIT_TRIAC);
+
 
 		if(timer_triack_on)
 		{
@@ -860,9 +877,8 @@ void ZeroCross()//après iRQ + après 10ms
 
 void timerZeroCross() //reactivez l'ibnteruption et simule le 2eme zero cross
 {	
-	//gpio_pin_intr_state_set(GPIO_ID_PIN(RECEIVEGPIO_ZERO_CROSS), GPIO_PIN_INTR_NEGEDGE); // enable IRQ	*/
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, BIT(RECEIVEGPIO_ZERO_CROSS));//ici clear uniquement bon gpio
-	ETS_GPIO_INTR_ENABLE();
+	gpio_pin_intr_state_set(GPIO_ID_PIN(RECEIVEGPIO_ZERO_CROSS), GPIO_PIN_INTR_NEGEDGE); // enable IRQ	*/
 	
 	timer_change(10000,(t_call_back)timerZeroCross);
 	ZeroCross();
@@ -883,8 +899,7 @@ void ZeroCrossIRQ()
 #ifdef DETECT_0V
 	os_timer_disarm(&timer_0V); // dis_arm the timer
 	os_timer_setfn(&timer_0V, (os_timer_func_t *)no_zero_cross, NULL); // set the timer function, dot get os_timer_func_t to force function convert
-	os_timer_arm(&timer_0V, 45, 1);//tout les 2seconde#endif
-	//uart0_sendStr("a");
+	os_timer_arm(&timer_0V, 45, 1);//tout les 2seconde
 #endif
 }
 
@@ -906,15 +921,12 @@ void ICACHE_FLASH_ATTR init_IRQ_zero_cross()
 #endif
 
 #ifdef STORE
-signed char monte;
-char niveau_100=-1;
+signed int niveau_100=-1;
 void storeIRQ()
 {
-	os_timer_disarm(&timer_timout_store);
-	os_timer_arm(&timer_timout_store, 500, 1);
+	
 	if(puissance_pwm[0])
 	{
-		monte=-1;
 		if(niveau<=consinge)
 		{
 			puissance_pwm[0]=0;
@@ -925,7 +937,6 @@ void storeIRQ()
 	}
 	if(puissance_pwm[1])
 	{
-		monte=1;
 		if(niveau>=consinge)
 		{
 			puissance_pwm[1]=0;
@@ -934,15 +945,49 @@ void storeIRQ()
 #endif
 		}
 	}
-	niveau+=monte;
-	if(niveau/echelle!=niveau_100)
+		
+	if(GPIO_INPUT_GET(GPIO_ID_PIN(RECEIVEGPIO_STORE))==0) //anti rebond
 	{
-		niveau_100=niveau/echelle;
-		if(niveau_100>100)
-			niveau_100=100;
-		else if (niveau_100<0)
-			niveau_100=0;
-		send_paquet_sensor(ID("/sensors/switch/"),SWITCH,niveau_100,0,"_1");
+		if(STORE_DIR_SENSOR GPIO_INPUT_GET(GPIO_ID_PIN(RECEIVEGPIO_STORE2)))
+		{
+			if(niveau<consinge) //si on tourne dans le bon sense
+			{
+				os_timer_disarm(&timer_timout_store);
+				os_timer_arm(&timer_timout_store, TIMOUT_STORE, 1); //reset timeout
+			}
+			print_debug("-\n");
+			niveau++;
+		}
+		else
+		{
+			if(niveau>consinge) //si on tourne dans le bon sense
+			{
+				os_timer_disarm(&timer_timout_store);
+				os_timer_arm(&timer_timout_store, TIMOUT_STORE, 1); //reset timeout
+			}
+			print_debug(" +\n");
+			niveau--;
+		}
+	
+		
+		signed int niveau_100_temp=(signed int)niveau*100/(signed int)echelle;
+		if(niveau_100_temp>100)
+			niveau_100_temp=100;
+		else if (niveau_100_temp<0)
+			niveau_100_temp=0;
+		if(niveau_100_temp!=niveau_100)
+		{
+			//char test[10];
+			niveau_100=niveau_100_temp;
+			/*int_to_srthex(niveau,test);
+			print_debug("\n");
+			print_debug(test);
+			int_to_srthex(niveau_100,test);
+			print_debug("\na");
+			print_debug(test);*/
+
+			send_paquet_sensor(ID("/sensors/switch/"),SWITCH,niveau_100,0,"_MsenS_");
+		}
 	}
 }
 
@@ -955,6 +1000,11 @@ void ICACHE_FLASH_ATTR init_IRQ_store()
 	PIN_PULLUP_EN(PERIPHS_IO_MUX_STORE);
 	GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, BIT(RECEIVEGPIO_STORE));
 	gpio_pin_intr_state_set(GPIO_ID_PIN(RECEIVEGPIO_STORE), GPIO_PIN_INTR_NEGEDGE); // Interr	
+	
+	PIN_FUNC_SELECT(PERIPHS_IO_MUX_STORE2, FUNC_GPIO_STORE2);
+	GPIO_DIS_OUTPUT(RECEIVEGPIO_STORE2);
+	PIN_PULLUP_EN(PERIPHS_IO_MUX_STORE2);
+	
 	ETS_GPIO_INTR_ENABLE();
 }
 #endif
@@ -1103,8 +1153,10 @@ void ICACHE_FLASH_ATTR time_send_mesures(void *arg)
 #ifdef STORE
 void ICACHE_FLASH_ATTR timeout_store(void* arg)
 {
+	os_timer_disarm(&timer_timout_store); // dis_arm the timer
 	if(puissance_pwm[0] || puissance_pwm[1])
 	{
+		print_debug("\ntimeout");
 		puissance_pwm[0]=0;
 		puissance_pwm[1]=0;
 		if(niveau<consinge)
@@ -1190,13 +1242,20 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
 		int val_100 = data[1];
 		if(val_100>100)
 			val_100=100;
-		consinge=val_100*echelle/100; //t_sleep utilise commen enchel
+		consinge=val_100*echelle/100; //t_sleep utilise commen echelle
+		char test[10];
+		print_debug("\n niveau=");
+		int_to_srthex(niveau,test);
+		print_debug(test);
+		print_debug(" consinge=");
+		int_to_srthex(consinge,test);
+		print_debug(test);
 		if(consinge>niveau)
 		{
-			//print_debug("---------------------PWM1");
+			print_debug("---------------------PWM1");
 			os_timer_disarm(&timer_timout_store); // dis_arm the timer
 			os_timer_setfn(&timer_timout_store, (os_timer_func_t *)timeout_store, NULL); // set the timer function, dot get os_timer_func_t to force function convert
-			os_timer_arm(&timer_timout_store, 500, 1);//detecte si on est blocke
+			os_timer_arm(&timer_timout_store, TIMOUT_STORE_START, 1);//detecte si on est blocke
 			puissance_pwm[0]=0;
 			puissance_pwm[1]=100;
 #ifdef TRIACK
@@ -1205,14 +1264,15 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
 		}
 		else if(consinge<niveau)
 		{
-			//print_debug("---------------------PWM0");
+			print_debug("---------------------PWM0");
 			os_timer_disarm(&timer_timout_store); // dis_arm the timer
 			os_timer_setfn(&timer_timout_store, (os_timer_func_t *)timeout_store, NULL); // set the timer function, dot get os_timer_func_t to force function convert
-			os_timer_arm(&timer_timout_store, 500, 1);//detecte si on est blocke arette et on dit qu'il est en possition
+			os_timer_arm(&timer_timout_store, TIMOUT_STORE_START, 1);//detecte si on est blocke /si on est blocke stop le moteur et on dit qu'il est en possition
 			puissance_pwm[0]=100;
 			puissance_pwm[1]=0;
 #ifdef TRIACK
 			puissance_triac=PUISSANCE_MAX;
+
 #endif
 		}
 		else

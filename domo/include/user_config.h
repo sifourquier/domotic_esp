@@ -3,7 +3,7 @@
 
 #include "user_config_mqtt.h"
 
-//#define DEBUG_PRINT
+#define DEBUG_PRINT
 //#define SEND_MQTT_ON_UART
 
 #define PUISSANCE_MAX 100000 //big value for special power (disable timer)
@@ -74,13 +74,15 @@
 	#define NB_PWM 2
 	//#define TLI4970_ENABLE
 	#define TRIACK
-	
-	#define BIT_PWM_VAL 0,5
+	#define STORE_DIR_SENSOR  //! for inverse or nothing for normal
+	#define BIT_PWM_VAL 5,0 //0,5 or 5,0 for change motor rotation
 	#define TRIACK_ON_OFF 
 	#define TRIACK_ON_OFF_PUISSANCE PUISSANCE_MAX
 	#define PIN_FUNC_SELECT_PWM PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0); PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
 	#define PRECISION_TIMER 100
 	#define NB_MAX_CALLBACK_TIME 4
+	#define TIMOUT_STORE_START 1500
+	#define TIMOUT_STORE 500
 	/*#if defined(DEBUG_PRINT) || defined(SEND_MQTT_ON_UART)
 		#error pour eviter d utiliser l uart alor que tx est utilisé pour le capteur
 	#endif*/
