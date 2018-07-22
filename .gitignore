@@ -1,0 +1,4 @@
+domo/config*
+bin/eagle.irom0text.bin
+*.output*
+*.directory
