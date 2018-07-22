@@ -1,5 +1,5 @@
 /*
- * ESPRSSIF MIT License
+ * ESPRESSIF MIT License
  *
  * Copyright (c) 2016 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
  *
@@ -37,6 +37,8 @@ LOCAL struct keys_param keys;
 LOCAL struct single_key_param *single_key[PLUG_KEY_NUM];
 LOCAL os_timer_t link_led_timer;
 LOCAL uint8 link_led_level = 0;
+
+extern uint32 priv_param_start_sec;     //0x3D
 
 /******************************************************************************
  * FunctionName : user_plug_get_status
@@ -81,8 +83,8 @@ user_plug_short_press(void)
 {
     user_plug_set_status((~plug_param.status) & 0x01);
 
-    spi_flash_erase_sector(PRIV_PARAM_START_SEC + PRIV_PARAM_SAVE);
-    spi_flash_write((PRIV_PARAM_START_SEC + PRIV_PARAM_SAVE) * SPI_FLASH_SEC_SIZE,
+    spi_flash_erase_sector(priv_param_start_sec + PRIV_PARAM_SAVE);
+    spi_flash_write((priv_param_start_sec + PRIV_PARAM_SAVE) * SPI_FLASH_SEC_SIZE,
         		(uint32 *)&plug_param, sizeof(struct plug_saved_param));
 }
 
@@ -157,7 +159,7 @@ user_plug_init(void)
 
     key_init(&keys);
 
-    spi_flash_read((PRIV_PARAM_START_SEC + PRIV_PARAM_SAVE) * SPI_FLASH_SEC_SIZE,
+    spi_flash_read((priv_param_start_sec + PRIV_PARAM_SAVE) * SPI_FLASH_SEC_SIZE,
         		(uint32 *)&plug_param, sizeof(struct plug_saved_param));
 
     PIN_FUNC_SELECT(PLUG_RELAY_LED_IO_MUX, PLUG_RELAY_LED_IO_FUNC);

@@ -1,5 +1,5 @@
 /*
- * ESPRSSIF MIT License
+ * ESPRESSIF MIT License
  *
  * Copyright (c) 2016 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
  *
@@ -24,10 +24,6 @@
 
 #ifndef __USER_DEVICE_H__
 #define __USER_DEVICE_H__
-
-/* NOTICE---this is for 512KB spi flash.
- * you can change to other sector if you use other size spi flash. */
-#define ESP_PARAM_START_SEC		0x3D
 
 #define packet_size   (2 * 1024)
 
@@ -54,4 +50,5 @@ struct dhcp_client_info {
 	uint8 flag;
 	uint8 pad[3];
 };
+
 #endif

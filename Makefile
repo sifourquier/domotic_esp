@@ -7,6 +7,7 @@ endif
 ifeq ($(COMPILE), gcc)
 	AR = xtensa-lx106-elf-ar
 	CC = xtensa-lx106-elf-gcc
+	CXX = xtensa-lx106-elf-g++
 	NM = xtensa-lx106-elf-nm
 	CPP = xtensa-lx106-elf-cpp
 	OBJCOPY = xtensa-lx106-elf-objcopy
@@ -14,6 +15,7 @@ ifeq ($(COMPILE), gcc)
 else
 	AR = xt-ar
 	CC = xt-xcc
+	CXX = xt-xcc
 	NM = xt-nm
 	CPP = xt-cpp
 	OBJCOPY = xt-objcopy
@@ -116,10 +118,26 @@ else
               addr = 0x101000
             endif
           else
-            size_map = 0
-            flash = 512
-            ifeq ($(app), 2)
-              addr = 0x41000
+            ifeq ($(SPI_SIZE_MAP), 8)
+              size_map = 8
+              flash = 8192
+              ifeq ($(app), 2)
+                addr = 0x101000
+              endif
+            else
+              ifeq ($(SPI_SIZE_MAP), 9)
+                size_map = 9
+                flash = 16384
+                ifeq ($(app), 2)
+                  addr = 0x101000
+                endif
+              else
+                size_map = 0
+                flash = 512
+                ifeq ($(app), 2)
+                addr = 0x41000
+                endif
+              endif
             endif
           endif
         endif
@@ -132,7 +150,7 @@ LD_FILE = $(LDDIR)/eagle.app.v6.ld
 
 ifneq ($(boot), none)
 ifneq ($(app),0)
-    ifeq ($(size_map), 6)
+    ifneq ($(findstring $(size_map),  6  8  9),)
       LD_FILE = $(LDDIR)/eagle.app.v6.$(boot).2048.ld
     else
       ifeq ($(size_map), 5)
@@ -151,17 +169,18 @@ ifneq ($(app),0)
                 LD_FILE = $(LDDIR)/eagle.app.v6.$(boot).512.app$(app).ld
               endif
             endif
-	      endif
-	    endif
-	  endif
-	endif
-	BIN_NAME = user$(app).$(flash).$(boot).$(size_map)
+          endif
+        endif
+      endif
+    endif
+    BIN_NAME = user$(app).$(flash).$(boot).$(size_map)
 endif
 else
     app = 0
 endif
 
 CSRCS ?= $(wildcard *.c)
+CXXSRCS ?= $(wildcard *.cpp)
 ASRCs ?= $(wildcard *.s)
 ASRCS ?= $(wildcard *.S)
 SUBDIRS ?= $(patsubst %/,%,$(dir $(wildcard */Makefile)))
@@ -170,10 +189,12 @@ ODIR := .output
 OBJODIR := $(ODIR)/$(TARGET)/$(FLAVOR)/obj
 
 OBJS := $(CSRCS:%.c=$(OBJODIR)/%.o) \
+	$(CXXSRCS:%.cpp=$(OBJODIR)/%.o) \
         $(ASRCs:%.s=$(OBJODIR)/%.o) \
         $(ASRCS:%.S=$(OBJODIR)/%.o)
 
 DEPS := $(CSRCS:%.c=$(OBJODIR)/%.d) \
+	$(CXXSCRS:%.cpp=$(OBJODIR)/%.d) \
         $(ASRCs:%.s=$(OBJODIR)/%.d) \
         $(ASRCS:%.S=$(OBJODIR)/%.d)
 
@@ -331,6 +352,17 @@ $(OBJODIR)/%.d: %.c
 	sed 's,\($*\.o\)[ :]*,$(OBJODIR)/\1 $@ : ,g' < $@.$$$$ > $@; \
 	rm -f $@.$$$$
 
+$(OBJODIR)/%.o: %.cpp
+	@mkdir -p $(OBJODIR);
+	$(CXX) $(if $(findstring $<,$(DSRCS)),$(DFLAGS),$(CFLAGS)) $(COPTS_$(*F)) -o $@ -c $<
+
+$(OBJODIR)/%.d: %.cpp
+	@mkdir -p $(OBJODIR);
+	@echo DEPEND: $(CXX) -M $(CFLAGS) $<
+	@set -e; rm -f $@; \
+	sed 's,\($*\.o\)[ :]*,$(OBJODIR)/\1 $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+
 $(OBJODIR)/%.o: %.s
 	@mkdir -p $(OBJODIR);
 	$(CC) $(CFLAGS) -o $@ -c $<
@@ -377,4 +409,4 @@ $(foreach image,$(GEN_IMAGES),$(eval $(call MakeImage,$(basename $(image)))))
 
 INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)include/$(TARGET) -I $(PDIR)driver_lib/include
 PDIR := ../$(PDIR)
-#sinclude $(PDIR)Makefile
+sinclude $(PDIR)Makefile

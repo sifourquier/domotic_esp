@@ -46,7 +46,13 @@
 
 #define RECEIVEGPIO_IRQ_PCF8885  13
 #define FUNC_GPIO_IRQ_PCF8885  FUNC_GPIO13
-#define PERIPHS_IO_MUX_IRQ_PCF8885 PERIPHS_IO_MUX_MTCK_U
+#define PERIPHS_IO_MUX_IRQ_PCF8885 PERIPHS_IO_MUX_MTCK_U3
+
+#define POWER_ON_ADS786x /*GPIO_OUTPUT_SET(0, 0);*/ GPIO_OUTPUT_SET(5, 0);
+#define POWER_OFF_ADS786x /*GPIO_OUTPUT_SET(5, 1); GPIO_OUTPUT_SET(0, 1);*/
+
+#define CS_ADS786x GPIO_OUTPUT_SET(5, 0);
+#define nCS_ADS786x GPIO_OUTPUT_SET(5, 1);
 
 #ifdef PWM
 char BIT_PWM[NB_PWM]={BIT_PWM_VAL};
@@ -68,11 +74,11 @@ const int PORT_FUNC_QT1040[4]={FUNC_GPIO0,FUNC_GPIO1,FUNC_GPIO2,FUNC_GPIO3};
 #endif
 
 #ifdef SLEEP
-static volatile os_timer_t timer_DisconnectMQTT;
+static os_timer_t timer_DisconnectMQTT;
 #endif
 
-static volatile os_timer_t timer_mesure;
-static volatile os_timer_t timer_time_out_connection;
+static os_timer_t timer_mesure;
+static os_timer_t timer_time_out_connection;
 
 bool config_ap();
 void save_and_restart();
@@ -585,6 +591,7 @@ void save_and_restart()
 	print_config();
 	
 	ETS_INTR_LOCK(); //desactivé tout les interruption quand on fait une comunication sur le SPI
+	spi_flash_erase_protect_disable();
 	spi_flash_erase_sector(ADRESSE_CONFIG_IN_FLASH>>12);
 	spi_flash_write(ADRESSE_CONFIG_IN_FLASH,ssid32bit,MAX_SSID_LENGTH);
 	spi_flash_write(ADRESSE_CONFIG_IN_FLASH+MAX_SSID_LENGTH,password32bit,MAX_PASSWORD_LENGTH);
@@ -924,25 +931,39 @@ void ICACHE_FLASH_ATTR init_IRQ_zero_cross()
 signed int niveau_100=-1;
 void storeIRQ()
 {
-	
+	int delta=consinge-niveau;
 	if(puissance_pwm[0])
 	{
-		if(niveau<=consinge)
+		if(delta>=0)
 		{
 			puissance_pwm[0]=0;
 #ifdef TRIACK
 			puissance_triac=0;
 #endif
 		}
+		else
+		{
+			if(delta<-(3*echelle/100))
+				puissance_pwm[0]=100;
+			else
+				puissance_pwm[0]=P_MIN_STORE_DOWN;
+		}
 	}
 	if(puissance_pwm[1])
 	{
-		if(niveau>=consinge)
+		if(delta<=0)
 		{
 			puissance_pwm[1]=0;
 #ifdef TRIACK
 			puissance_triac=0;
 #endif
+		}
+		else
+		{
+			if(delta>(3*echelle/100))
+				puissance_pwm[1]=100;
+			else
+				puissance_pwm[1]=P_MIN_STORE_UP;
 		}
 	}
 		
@@ -955,7 +976,7 @@ void storeIRQ()
 				os_timer_disarm(&timer_timout_store);
 				os_timer_arm(&timer_timout_store, TIMOUT_STORE, 1); //reset timeout
 			}
-			print_debug("-\n");
+			//print_debug("-\n");
 			niveau++;
 		}
 		else
@@ -965,7 +986,7 @@ void storeIRQ()
 				os_timer_disarm(&timer_timout_store);
 				os_timer_arm(&timer_timout_store, TIMOUT_STORE, 1); //reset timeout
 			}
-			print_debug(" +\n");
+			//print_debug(" +\n");
 			niveau--;
 		}
 	
@@ -1057,7 +1078,27 @@ void timer_mesure_handler(void *arg)
 	int temperature;
 	int humidity;
 	
- 	bme280_read_pressure_temperature_humidity(&pressure,&temperature, &humidity);
+	#ifdef ADS786x
+		CS_ADS786x;
+		signed short val_adc;
+		unsigned char tab[2];
+		spi_read(tab,2);
+		val_adc=tab[0]<<8|tab[1];
+		char test[10];
+		int_to_srthex(val_adc,test);
+		print_debug("\n ADC=");
+		val_adc=3200-val_adc;
+		val_adc=val_adc/2;
+		if(val_adc<0)
+			val_adc=0;
+		if(val_adc>1000)
+			val_adc=1000;
+		send_paquet_sensor(ID("/sensors/humiditys/"),HUMIDITY,val_adc*10,1,"_sol");
+		print_debug(test);
+		nCS_ADS786x;
+	#endif
+		
+	bme280_read_pressure_temperature_humidity(&pressure,&temperature, &humidity);
 	bme280_set_power_mode(BME280_SLEEP_MODE);
 	
 	send_paquet_sensor(ID("/sensors/temperatures/"),TEMPERATURE,temperature,1,NULL);
@@ -1072,8 +1113,8 @@ void ICACHE_FLASH_ATTR go_sleep()
 {
 	print_debug("sleep\n");
 	//uart0_sendStr("S\n");
-#ifdef METEO
-	gpio_output_set(BIT5, 0, BIT5, 0); //on est plus reveillé
+#ifdef ADS786x
+	POWER_OFF_ADS786x
 #endif
 	system_deep_sleep(t_sleep*1000*1000);
 }
@@ -1087,16 +1128,15 @@ void ICACHE_FLASH_ATTR DisconnectMQTT()
 {
 	MQTT_OnDisconnected(&mqttClient,diconnectedCB);
 	//uart0_sendStr("diconnect\n");
-	MQTT_Disconnect(&mqttClient); ///non testé sans ecrant
+	MQTT_Disconnect(&mqttClient); 
+	#ifndef METEO
 	if(topic[0]!=0) 
 	{
-#ifndef STORE
 		uart0_sendStr("\1stE");//le module passe en veille
-#endif
 	}
-#ifndef STORE
+	#endif
 	uart0_sendStr("DisconnectMQTT");
-#endif
+
 	os_timer_disarm(&timer_DisconnectMQTT);
 	os_timer_setfn(&timer_DisconnectMQTT, (os_timer_func_t *)go_sleep, NULL);
 #ifdef PCF8885
@@ -1163,10 +1203,13 @@ void ICACHE_FLASH_ATTR timeout_store(void* arg)
 			niveau=consinge+echelle/500; //+ 0.2% pour que la prochaine foix on stop avant le bloquage
 		else
 			niveau=consinge-echelle/500; //- 0.2% pour que la prochaine foix on stop avant le bloquage
+			
 	}
 	#ifdef TRIACK
 		puissance_triac=0;
 	#endif
+	signed int niveau_100_temp=(signed int)niveau*100/(signed int)echelle;
+	send_paquet_sensor(ID("/sensors/switch/"),SWITCH,niveau_100,0,"_MsenS_");
 }
 #endif
 void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const char *data, uint32_t data_len)
@@ -1250,7 +1293,8 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
 		print_debug(" consinge=");
 		int_to_srthex(consinge,test);
 		print_debug(test);
-		if(consinge>niveau)
+		int delta=consinge-niveau;
+		if(delta>0)
 		{
 			print_debug("---------------------PWM1");
 			os_timer_disarm(&timer_timout_store); // dis_arm the timer
@@ -1258,18 +1302,29 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
 			os_timer_arm(&timer_timout_store, TIMOUT_STORE_START, 1);//detecte si on est blocke
 			puissance_pwm[0]=0;
 			puissance_pwm[1]=100;
+
 #ifdef TRIACK
 			puissance_triac=PUISSANCE_MAX;
 #endif
 		}
-		else if(consinge<niveau)
+		else if(delta<0)
 		{
 			print_debug("---------------------PWM0");
 			os_timer_disarm(&timer_timout_store); // dis_arm the timer
 			os_timer_setfn(&timer_timout_store, (os_timer_func_t *)timeout_store, NULL); // set the timer function, dot get os_timer_func_t to force function convert
 			os_timer_arm(&timer_timout_store, TIMOUT_STORE_START, 1);//detecte si on est blocke /si on est blocke stop le moteur et on dit qu'il est en possition
+			
+			print_debug("\n delta=");
+			int_to_srthex(-delta,test);
+			print_debug(test);
+			
 			puissance_pwm[0]=100;
 			puissance_pwm[1]=0;
+			
+			print_debug("\n puissance_pwm=");
+			int_to_srthex(puissance_pwm[0],test);
+			print_debug(test);
+			
 #ifdef TRIACK
 			puissance_triac=PUISSANCE_MAX;
 
@@ -1346,11 +1401,6 @@ void ICACHE_FLASH_ATTR user_init(void)
 	PIN_FUNC_SELECT(PERIPHS_IO_MUX_IRQ_PCF8885, FUNC_GPIO_IRQ_PCF8885);
 	GPIO_OUTPUT_SET(RECEIVEGPIO_IRQ_PCF8885,1); //"disable" the reset 
 #endif
-	
-	
-#ifdef METEO
-	gpio_output_set(0, BIT5, BIT5, 0); //dire qu'on est reveiller
-#endif
 
 		
 	//os_install_putc1(NULL);
@@ -1380,8 +1430,8 @@ void ICACHE_FLASH_ATTR user_init(void)
 	spi_init(HSPI,9); //configure SPI Fcpu /4/(x-1)
 	#endif
 	#ifdef BME280
-	SPI_routine();
-	bme280_set_power_mode(BME280_NORMAL_MODE);
+	//SPI_routine();
+	//bme280_set_power_mode(BME280_NORMAL_MODE);
 	//os_delay_us(10000);
 	//bme280_read_pressure_temperature_humidity(&old_pressure,&old_temperature, &old_humidity);//recupere les ancienne valeur
 	bme280_init_user();
@@ -1391,6 +1441,10 @@ void ICACHE_FLASH_ATTR user_init(void)
 	os_timer_arm(&timer_mesure, 100, 0);
 	#endif
 	#endif
+	
+	#ifdef ADS786x
+	POWER_ON_ADS786x; //power suply ADS786x
+#endif
 	
 	ETS_UART_INTR_DISABLE(); //desactive IRQ uart durant l'ecriture (recomandé)
 	spi_flash_read(ADRESSE_CONFIG_IN_FLASH,ssid32bit,MAX_SSID_LENGTH);

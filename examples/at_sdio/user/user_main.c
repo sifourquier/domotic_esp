@@ -1,5 +1,5 @@
 /*
- * ESPRSSIF MIT License
+ * ESPRESSIF MIT License
  *
  * Copyright (c) 2016 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
  *
@@ -126,7 +126,7 @@ extern void at_exeCmdCiupdate(uint8_t id);
 at_funcationType at_custom_cmd[] = {
     {"+TEST", 5, at_testCmdTest, at_queryCmdTest, at_setupCmdTest, at_exeCmdTest},
 #ifdef AT_UPGRADE_SUPPORT
-    //{"+CIUPDATE", 9,       NULL,            NULL,            NULL, at_exeCmdCiupdate}
+    {"+CIUPDATE", 9,       NULL,            NULL,            NULL, at_exeCmdCiupdate}
 #endif
 };
 
@@ -151,7 +151,7 @@ user_rf_cal_sector_set(void)
 
     switch (size_map) {
         case FLASH_SIZE_4M_MAP_256_256:
-            rf_cal_sec = 128 - 8;
+            rf_cal_sec = 128 - 5;
             break;
 
         case FLASH_SIZE_8M_MAP_512_512:
@@ -168,6 +168,12 @@ user_rf_cal_sector_set(void)
             rf_cal_sec = 1024 - 5;
             break;
 
+        case FLASH_SIZE_64M_MAP_1024_1024:
+            rf_cal_sec = 2048 - 5;
+            break;
+        case FLASH_SIZE_128M_MAP_1024_1024:
+            rf_cal_sec = 4096 - 5;
+            break;
         default:
             rf_cal_sec = 0;
             break;
@@ -179,6 +185,7 @@ user_rf_cal_sector_set(void)
 void ICACHE_FLASH_ATTR 
 user_rf_pre_init(void)
 {
+    system_phy_freq_trace_enable(at_get_rf_auto_trace_from_flash());
 }
 
 void ICACHE_FLASH_ATTR at_sdio_response(const uint8*data,uint32 length)
@@ -199,13 +206,21 @@ extern void at_custom_uart_rx_buffer_fetch_cb(void);
 
 void ICACHE_FLASH_ATTR user_init(void)
 {
-    char buf[64] = {0};
+    char buf[128] = {0};
     at_customLinkMax = 5;
 	sdio_slave_init();
 	sdio_register_recv_cb(sdio_recv_data_callback);
     at_init();
 	at_register_uart_rx_buffer_fetch_cb(at_custom_uart_rx_buffer_fetch_cb);
+#ifdef ESP_AT_FW_VERSION
+    if ((ESP_AT_FW_VERSION != NULL) && (os_strlen(ESP_AT_FW_VERSION) < 64)) {
+        os_sprintf(buf,"compile time:%s %s\r\n"ESP_AT_FW_VERSION,__DATE__,__TIME__);
+    } else {
+        os_sprintf(buf,"compile time:%s %s",__DATE__,__TIME__);
+    }
+#else
     os_sprintf(buf,"compile time:%s %s",__DATE__,__TIME__);
+#endif
     at_set_custom_info(buf);
 	at_fake_uart_enable(TRUE,at_sdio_response);
 	

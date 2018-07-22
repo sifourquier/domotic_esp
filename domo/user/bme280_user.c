@@ -57,9 +57,11 @@
 #include "os_type.h"
 #include "driver/spi.h"
 #include "bme280_user.h"
+#include "gpio.h"
 
-#define CS gpio_output_set(0, BIT4, BIT4, 0);
-#define nCS gpio_output_set(BIT4, 0, BIT4, 0);
+
+#define CS GPIO_OUTPUT_SET(4, 0);
+#define nCS GPIO_OUTPUT_SET(4, 1);
 
 /*----------------------------------------------------------------------------*
  *  struct bme280_t parameters can be accessed by using bme280

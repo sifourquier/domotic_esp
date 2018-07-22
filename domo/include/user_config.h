@@ -25,6 +25,11 @@
 	#define TRIACK
 #endif
 
+#ifdef METEO_ADS786X
+	#define METEO
+	#define ADS786x
+#endif
+
 #ifdef METEO
 	#define BME280
 	#define SLEEP
@@ -74,7 +79,7 @@
 	#define NB_PWM 2
 	//#define TLI4970_ENABLE
 	#define TRIACK
-	#define STORE_DIR_SENSOR  //! for inverse or nothing for normal
+	#define STORE_DIR_SENSOR ! //! for inverse or nothing for normal
 	#define BIT_PWM_VAL 5,0 //0,5 or 5,0 for change motor rotation
 	#define TRIACK_ON_OFF 
 	#define TRIACK_ON_OFF_PUISSANCE PUISSANCE_MAX
@@ -82,7 +87,12 @@
 	#define PRECISION_TIMER 100
 	#define NB_MAX_CALLBACK_TIME 4
 	#define TIMOUT_STORE_START 1500
-	#define TIMOUT_STORE 500
+	#define TIMOUT_STORE 200
+	#define PWM_SCALL 100
+	#define P_MIN_STORE_UP 60
+	#define P_MIN_STORE_DOWN 17
+	//#define FACTEUR_P_STORE_UP 10
+	//#define FACTEUR_P_STORE_DOWN 10
 	/*#if defined(DEBUG_PRINT) || defined(SEND_MQTT_ON_UART)
 		#error pour eviter d utiliser l uart alor que tx est utilisé pour le capteur
 	#endif*/
@@ -135,12 +145,16 @@
 #define MAX_TOPIC_LENGTH 128
 #define TIMOUT_CONNECTION 40000
 
-#define PWM_SCALL 5
-#define PWM_SCALL_SLOW 20
+#ifndef PWM_SCALL
+	#define PWM_SCALL 5
+#endif
+#ifndef PWM_SCALL_SLOW
+	#define PWM_SCALL_SLOW PWM_SCALL*4
+#endif
 
 #define MAX_ID_LENGTH 16
 
-#define ADRESSE_CONFIG_IN_FLASH 0x3C000
+#define ADRESSE_CONFIG_IN_FLASH 0x7A000
 
 #define PCF8885_ADRESSE 0x40
 #define I2C_READ 0x01

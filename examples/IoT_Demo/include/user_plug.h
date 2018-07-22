@@ -1,5 +1,5 @@
 /*
- * ESPRSSIF MIT License
+ * ESPRESSIF MIT License
  *
  * Copyright (c) 2016 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
  *
@@ -26,10 +26,6 @@
 #define __USER_ESPSWITCH_H__
 
 #include "driver/key.h"
-
-/* NOTICE---this is for 512KB spi flash.
- * you can change to other sector if you use other size spi flash. */
-#define PRIV_PARAM_START_SEC		0x3C
 
 #define PRIV_PARAM_SAVE     0
 

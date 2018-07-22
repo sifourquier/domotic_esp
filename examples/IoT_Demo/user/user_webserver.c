@@ -1,5 +1,5 @@
 /*
- * ESPRSSIF MIT License
+ * ESPRESSIF MIT License
  *
  * Copyright (c) 2016 <ESPRESSIF SYSTEMS (SHANGHAI) PTE LTD>
  *
@@ -65,6 +65,8 @@ LOCAL uint32 PostCmdNeeRsp = 1;
 uint8 upgrade_lock = 0;
 LOCAL os_timer_t app_upgrade_10s;
 LOCAL os_timer_t upgrade_check_timer;
+
+extern uint32 priv_param_start_sec;
 
 /******************************************************************************
  * FunctionName : device_get
@@ -1672,8 +1674,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             response_send(ptrespconn, true);
                             extern  struct esp_platform_saved_param esp_param;
                             esp_param.activeflag = 0;
-                            system_param_save_with_protect(ESP_PARAM_START_SEC, &esp_param, sizeof(esp_param));
-                            
+                            system_param_save_with_protect(priv_param_start_sec + 1, &esp_param, sizeof(esp_param));
                             system_restore();
                             system_restart();
                     }
